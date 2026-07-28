@@ -1,0 +1,27 @@
+# Maintainer: WangWindow <1598593280@qq.com>
+
+pkgname=neovim-bin
+pkgver=@PKGVER@
+pkgrel=1
+pkgdesc='Vim-fork focused on extensibility and usability (official prebuilt binary)'
+arch=('x86_64')
+url='https://neovim.io'
+license=('Apache-2.0')
+depends=('glibc')
+optdepends=(
+  'wl-clipboard: clipboard support on Wayland'
+  'xclip: clipboard support on X11'
+  'xsel: alternative clipboard support on X11'
+)
+provides=("neovim=${pkgver}")
+conflicts=('neovim')
+options=('!strip')
+source=('nvim-linux-x86_64.tar.gz')
+sha256sums=('@SHA256@')
+
+package() {
+  cd "${srcdir}/nvim-linux-x86_64"
+
+  install -d "${pkgdir}/usr"
+  cp -a bin lib share "${pkgdir}/usr/"
+}

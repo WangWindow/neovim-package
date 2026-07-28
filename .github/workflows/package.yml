@@ -1,0 +1,128 @@
+name: Package latest Neovim release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 */6 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: neovim-release-package
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+    env:
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install workflow tools
+        run: pacman -Syu --noconfirm --needed git curl jq github-cli
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Find latest upstream release
+        id: upstream
+        run: |
+          set -euo pipefail
+          release_json=$(curl --fail-with-body --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            https://api.github.com/repos/neovim/neovim/releases/latest)
+
+          tag=$(jq -r '.tag_name' <<<"$release_json")
+          asset_url=$(jq -r '
+            .assets[]
+            | select(.name == "nvim-linux-x86_64.tar.gz")
+            | .browser_download_url
+          ' <<<"$release_json")
+
+          [[ -n $tag && $tag != null ]] || {
+            echo 'Latest upstream release has no tag' >&2
+            exit 1
+          }
+          [[ -n $asset_url && $asset_url != null ]] || {
+            echo "Release $tag has no nvim-linux-x86_64.tar.gz asset" >&2
+            exit 1
+          }
+
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >>"$GITHUB_OUTPUT"
+          echo "asset_url=$asset_url" >>"$GITHUB_OUTPUT"
+
+      - name: Check whether this version is already packaged
+        id: existing
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          set -euo pipefail
+          asset_count=$(
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json assets --jq '[.assets[] | select(.name | startswith("neovim-bin-"))] | length' \
+              2>/dev/null || printf '0'
+          )
+          if (( asset_count > 0 )); then
+            echo "Version $TAG is already packaged; nothing to do."
+            echo 'should_build=false' >>"$GITHUB_OUTPUT"
+          else
+            echo 'should_build=true' >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Download official archive
+        if: steps.existing.outputs.should_build == 'true'
+        env:
+          ASSET_URL: ${{ steps.upstream.outputs.asset_url }}
+        run: |
+          curl --fail-with-body --location --retry 3 \
+            --output nvim-linux-x86_64.tar.gz "$ASSET_URL"
+
+      - name: Build pacman package
+        if: steps.existing.outputs.should_build == 'true'
+        env:
+          VERSION: ${{ steps.upstream.outputs.version }}
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- \
+            "$GITHUB_WORKSPACE/scripts/build-package.sh" \
+            "$VERSION" \
+            "$GITHUB_WORKSPACE/nvim-linux-x86_64.tar.gz" \
+            "$GITHUB_WORKSPACE/dist"
+
+      - name: Verify package metadata
+        if: steps.existing.outputs.should_build == 'true'
+        run: |
+          set -euo pipefail
+          package=$(find dist -maxdepth 1 -type f -name 'neovim-bin-*.pkg.tar.zst' -print -quit)
+          [[ -n $package ]]
+          pacman -Qip "$package"
+
+      - name: Publish package to this repository
+        if: steps.existing.outputs.should_build == 'true'
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(
+            find dist -maxdepth 1 -type f -name 'neovim-bin-*.pkg.tar.zst' -print
+          )
+          (( ${#packages[@]} > 0 ))
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${packages[@]}" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "${packages[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Neovim ${TAG} Arch Linux package" \
+              --notes "Arch Linux x86_64 package repacked from Neovim's official ${TAG} release archive."
+          fi

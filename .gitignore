@@ -1,0 +1,14 @@
+.claude/
+.codex/
+.copilot/
+.gemini/
+.opencode/
+.omo/
+
+temp/
+build/
+dist/
+*.pkg.tar.*
+*.tar.gz
+PKGBUILD
+.SRCINFO
