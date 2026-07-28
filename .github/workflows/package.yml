@@ -123,6 +123,6 @@ jobs:
           else
             gh release create "$TAG" "${packages[@]}" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "Neovim ${TAG} Arch Linux package" \
+              --title "$TAG" \
               --notes "Arch Linux x86_64 package repacked from Neovim's official ${TAG} release archive."
           fi
