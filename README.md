@@ -5,7 +5,7 @@
 
 ## GitHub Actions
 
-[`.github/workflows/package.yml`](.github/workflows/package.yml) 每 6 小时运行一次，
+[`.github/workflows/package.yml`](.github/workflows/package.yml) 每周小时运行一次，
 也可以手动触发。它会：
 
 1. 获取 Neovim 最新正式版本。
@@ -21,14 +21,9 @@
 
 需要 Arch Linux 和 `base-devel`：
 
+打包示例：
 ```bash
 ./scripts/build-package.sh <版本> ./nvim-linux-x86_64.tar.gz ./dist
-```
-
-例如：
-
-```bash
-./scripts/build-package.sh v0.12.2 ./nvim-linux-x86_64.tar.gz ./dist
 ```
 
 安装生成的包：
