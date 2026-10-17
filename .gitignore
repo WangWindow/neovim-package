@@ -9,6 +9,7 @@ temp/
 build/
 dist/
 *.pkg.tar.*
+*.deb
 *.tar.gz
 PKGBUILD
 .SRCINFO

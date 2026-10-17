@@ -1,0 +1,13 @@
+Package: neovim-bin
+Version: @PKGVER@
+Section: editors
+Priority: optional
+Architecture: amd64
+Maintainer: WangWindow <1598593280@qq.com>
+Depends: libc6
+Provides: neovim (= @PKGVER@)
+Conflicts: neovim, neovim-runtime
+Replaces: neovim, neovim-runtime
+Homepage: https://neovim.io
+Description: Vim-fork focused on extensibility and usability
+ Neovim is a refactor of Vim focused on extensibility and usability.

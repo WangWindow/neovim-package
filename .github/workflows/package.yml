@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Install workflow tools
-        run: pacman -Syu --noconfirm --needed git curl jq github-cli
+        run: pacman -Syu --noconfirm --needed git curl jq github-cli dpkg
 
       - name: Check out repository
         uses: actions/checkout@v4
@@ -65,13 +65,18 @@ jobs:
           TAG: ${{ steps.upstream.outputs.tag }}
         run: |
           set -euo pipefail
-          asset_count=$(
-            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --json assets --jq '[.assets[] | select(.name | startswith("neovim-bin-"))] | length' \
-              2>/dev/null || printf '0'
-          )
-          if (( asset_count > 0 )); then
-            echo "Version $TAG is already packaged; nothing to do."
+          assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].name' 2>/dev/null || true)
+          has_arch=false
+          has_deb=false
+          if grep -Eq '^neovim-bin-.*\.pkg\.tar\.zst$' <<<"$assets"; then
+            has_arch=true
+          fi
+          if grep -Eq '^neovim-bin_.*_amd64\.deb$' <<<"$assets"; then
+            has_deb=true
+          fi
+          if [[ $has_arch == true && $has_deb == true ]]; then
+            echo "Version $TAG already has both package formats; nothing to do."
             echo 'should_build=false' >>"$GITHUB_OUTPUT"
           else
             echo 'should_build=true' >>"$GITHUB_OUTPUT"
@@ -98,13 +103,26 @@ jobs:
             "$GITHUB_WORKSPACE/nvim-linux-x86_64.tar.gz" \
             "$GITHUB_WORKSPACE/dist"
 
+      - name: Build Debian package
+        if: steps.existing.outputs.should_build == 'true'
+        env:
+          VERSION: ${{ steps.upstream.outputs.version }}
+        run: |
+          "$GITHUB_WORKSPACE/scripts/build-deb-package.sh" \
+            "$VERSION" \
+            "$GITHUB_WORKSPACE/nvim-linux-x86_64.tar.gz" \
+            "$GITHUB_WORKSPACE/dist"
+
       - name: Verify package metadata
         if: steps.existing.outputs.should_build == 'true'
         run: |
           set -euo pipefail
           package=$(find dist -maxdepth 1 -type f -name 'neovim-bin-*.pkg.tar.zst' -print -quit)
+          deb=$(find dist -maxdepth 1 -type f -name 'neovim-bin_*_amd64.deb' -print -quit)
           [[ -n $package ]]
+          [[ -n $deb ]]
           pacman -Qip "$package"
+          dpkg-deb --info "$deb"
 
       - name: Publish package to this repository
         if: steps.existing.outputs.should_build == 'true'
@@ -113,7 +131,9 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t packages < <(
-            find dist -maxdepth 1 -type f -name 'neovim-bin-*.pkg.tar.zst' -print
+            find dist -maxdepth 1 -type f \
+              \( -name 'neovim-bin-*.pkg.tar.zst' -o -name 'neovim-bin_*_amd64.deb' \) \
+              -print
           )
           (( ${#packages[@]} > 0 ))
 
@@ -124,5 +144,5 @@ jobs:
             gh release create "$TAG" "${packages[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --title "$TAG" \
-              --notes "Arch Linux x86_64 package repacked from Neovim's official ${TAG} release archive."
+              --notes "Arch Linux x86_64 and Debian/Ubuntu amd64 packages repacked from Neovim's official ${TAG} release archive."
           fi
