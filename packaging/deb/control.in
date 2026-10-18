@@ -2,7 +2,7 @@ Package: neovim-bin
 Version: @PKGVER@
 Section: editors
 Priority: optional
-Architecture: amd64
+Architecture: @DEBARCH@
 Maintainer: WangWindow <1598593280@qq.com>
 Depends: libc6
 Provides: neovim (= @PKGVER@)
